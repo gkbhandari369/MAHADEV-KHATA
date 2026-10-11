@@ -1,0 +1,17 @@
+{
+  "name": "Mahadev Recondition",
+  "short_name": "Mahadev",
+  "description": "महादेव रिकन्डीसन — गाडी व्यवस्थापन र हिसाब",
+  "lang": "ne",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#12285a",
+  "theme_color": "#12285a",
+  "icons": [
+    { "src": "logo-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "logo.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
