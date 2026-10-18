@@ -1,0 +1,73 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ★★★ यहाँ मालिक (Merchant) को User UID राख्नुहोस् — Authentication → Users बाट कपी गरेर ★★★
+    // यो एउटा मात्र खाता मालिक हुन्छ; अरू कसैले आफूलाई मालिक बनाउन सक्दैन।
+    function isOwner() { return request.auth != null && request.auth.uid == 'PASTE_OWNER_UID_HERE'; }
+
+    // ---- मेरो staff document ----
+    function me() { return get(/databases/$(database)/documents/staff/$(request.auth.uid)).data; }
+    function active() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/staff/$(request.auth.uid))
+        && me().get('active', true) == true;
+    }
+    function myShop() { return me().get('shop', 'main'); }     // shop नभए = 'main' (मालिकको पुरानो दोकान)
+    function isAdm()  { return active() && me().get('role', 'staff').lower() == 'admin'; }
+    function inShop(sid) { return active() && myShop() == sid; } // आफ्नै दोकानको डेटा मात्र
+
+    // ---- खाताहरू (Admin / Staff) ----
+    match /staff/{uid} {
+      // आफ्नो document सबैले; Admin ले आफ्नै दोकानका; मालिकले सबै
+      allow get: if request.auth != null && (
+        request.auth.uid == uid
+        || isOwner()
+        || (isAdm() && resource.data.get('shop', 'main') == myShop()));
+      allow list: if isOwner() || (isAdm() && resource.data.shop == myShop());
+
+      // नयाँ खाता: मालिकले Admin/Staff जुनसुकै दोकानमा;
+      // Admin ले आफ्नै दोकानमा Staff मात्र (Admin बनाउन मिल्दैन)
+      allow create: if isOwner() || (isAdm()
+        && request.resource.data.shop == myShop()
+        && request.resource.data.role == 'staff'
+        && request.resource.data.keys().hasOnly(
+             ['name','role','active','shop','shopName','email','username','createdAt','createdBy']));
+
+      // बदल्न: मालिकले जे पनि; Admin ले आफ्नै दोकानको Staff को active/name मात्र (Admin लाई छुन मिल्दैन)
+      allow update: if isOwner() || (isAdm()
+        && resource.data.get('shop', 'main') == myShop()
+        && resource.data.get('role', 'staff').lower() != 'admin'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active','name']));
+
+      allow delete: if false;
+    }
+
+    // ---- मालिकको दोकान ('main') — पुरानै ठाउँमा, पुरानो डेटा जस्ताको तस्तै ----
+    match /recs/{id} {
+      allow read: if inShop('main');
+      allow create, update: if inShop('main') && request.resource.data.by == request.auth.uid;
+      allow delete: if inShop('main') && (isAdm() || id.matches('trash~.*'));
+    }
+    match /photos/{id}  { allow read, write: if inShop('main'); }
+    match /backups/{id} { allow read, write: if inShop('main'); }
+    match /khata/{id} {
+      allow read: if inShop('main');
+      allow write: if false;
+    }
+
+    // ---- हरेक Admin को आफ्नै अलग दोकान: shops/{id}/... ----
+    // (त्यही दोकानका Admin र उसका Staff मात्र; अर्को दोकान र मालिकले पनि डेटा देख्दैनन्)
+    match /shops/{sid} {
+      match /recs/{id} {
+        allow read: if inShop(sid);
+        allow create, update: if inShop(sid) && request.resource.data.by == request.auth.uid;
+        allow delete: if inShop(sid) && (isAdm() || id.matches('trash~.*'));
+      }
+      match /photos/{id}  { allow read, write: if inShop(sid); }
+      match /backups/{id} { allow read, write: if inShop(sid); }
+    }
+
+    match /{document=**} { allow read, write: if false; }
+  }
+}
